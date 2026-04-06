@@ -1,0 +1,7 @@
+model,prompt_length_tokens,m4_ttft_ms,m4_ptl_ms,m4_throughput_tok_s,m2_ttft_ms,m2_ptl_ms,m2_throughput_tok_s,ttft_ratio_m2_over_m4,ptl_ratio_m2_over_m4,notes
+TinyLlama-1.1B-MPS,32,15.83,19.924,50.19,25.905,29.476,33.93,1.636,1.479,"M4:120GB/s,16GB,MPS | M2:100GB/s,8GB,MPS | batch=1 | float16"
+TinyLlama-1.1B-MPS,64,16.435,17.795,56.2,30.725,26.642,37.53,1.869,1.497,"M4:120GB/s,16GB,MPS | M2:100GB/s,8GB,MPS | batch=1 | float16"
+TinyLlama-1.1B-MPS,128,21.665,20.95,47.73,41.655,28.147,35.53,1.923,1.344,"M4:120GB/s,16GB,MPS | M2:100GB/s,8GB,MPS | batch=1 | float16"
+TinyLlama-1.1B-MPS,256,40.552,23.347,42.83,65.635,31.535,31.71,1.619,1.351,"M4:120GB/s,16GB,MPS | M2:100GB/s,8GB,MPS | batch=1 | float16"
+TinyLlama-1.1B-MPS,512,79.248,29.365,34.05,129.138,41.19,24.28,1.63,1.403,"M4:120GB/s,16GB,MPS | M2:100GB/s,8GB,MPS | batch=1 | float16"
+TinyLlama-1.1B-MPS,1024,189.074,44.706,22.37,316.322,67.14,14.89,1.673,1.502,"M4:120GB/s,16GB,MPS | M2:100GB/s,8GB,MPS | batch=1 | float16"

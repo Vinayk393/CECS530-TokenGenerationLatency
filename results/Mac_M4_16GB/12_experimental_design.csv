@@ -1,0 +1,11 @@
+parameter,value,rationale,impact_on_results
+batch_size,1,Simulates real-time interactive inference (chatbot/assistant use case),Isolates per-request latency; batch>1 would improve throughput but not user-perceived TTFT
+backend,MPS (Metal Performance Shaders),"Native Apple Silicon GPU backend — faster than CPU, avoids PCIe overhead",Results are specific to Apple unified-memory architecture; not directly comparable to CUDA
+precision,float16,Standard inference precision; balances accuracy and memory footprint,float32 would double memory bandwidth demand; bfloat16 not supported on MPS
+model,TinyLlama-1.1B-Chat-v1.0,Fits comfortably in 8GB RAM; preserves transformer inference behavior for latency analysis,Smaller model means lower absolute latency; trends generalize but absolute values do not
+warmup_runs,1 (excluded from results),Allows MPS kernel compilation and cache population before measurement,"Without warmup, first run TTFT is 2–3x higher (see 06_cold_vs_warm_run.csv)"
+trials_per_config,5 (TTFT) / 20 tokens (PTL),Sufficient for mean+stdev estimation; balances measurement time vs statistical validity,p90/p99 estimates from 05 trials are approximate; 50-trial distribution in 10_latency_variance.csv
+prompt_content,"Repeated fixed text, truncated to target token count",Controlled input isolates prompt-length effect from content-dependent behavior,Real prompts with varied structure may show ±10–15% additional variance
+output_length,Variable (16–256 tokens),Covers short (code snippet) to long (document) generation scenarios,Longer outputs increase E2E latency linearly; PTL itself stays roughly constant
+kv_cache,Enabled (default HuggingFace behavior),Required for realistic decode performance; disabling would make PTL constant but unrealistic,KV-cache enabled means PTL grows with context — this is the key finding of the study
+measurement_timer,time.perf_counter() with MPS synchronize(),perf_counter gives nanosecond resolution; MPS sync ensures GPU work completes before stop,"Without sync(), measured times underestimate true latency (async execution)"

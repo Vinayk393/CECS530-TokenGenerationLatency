@@ -1,0 +1,13 @@
+model_name,params_billions,model_size_gb_f16,prompt_length_tokens,m4_ttft_ms,m2_ttft_ms,m4_ptl_ms,m2_ptl_ms,m4_throughput_tok_s,m2_throughput_tok_s,m4_bw_util_pct,m2_bw_util_pct,data_source
+TinyLlama-1.1B,1.1,2.2,64,20.73,28.98,22.847,33.521,43.77,29.83,87.2,81.6,measured
+LLaMA-3.2-1B,1.0,2.0,64,18.8,27.07,21.304,31.279,46.94,31.97,82.1,79.1,estimated_from_bandwidth_scaling
+LLaMA-3.2-3B,3.0,6.0,64,50.97,71.79,55.452,86.294,18.03,11.59,89.4,69.5,estimated_from_bandwidth_scaling
+TinyLlama-1.1B,1.1,2.2,128,27.95,44.26,22.847,33.521,43.77,29.83,79.9,65.6,measured
+LLaMA-3.2-1B,1.0,2.0,128,22.61,42.35,23.614,35.416,42.35,28.24,70.2,56.4,estimated_from_bandwidth_scaling
+LLaMA-3.2-3B,3.0,6.0,128,69.68,110.06,62.745,96.815,15.94,10.33,79.2,61.8,estimated_from_bandwidth_scaling
+TinyLlama-1.1B,1.1,2.2,256,38.36,64.09,24.831,37.024,40.27,27.01,73.5,58.1,measured
+LLaMA-3.2-1B,1.0,2.0,256,40.34,58.48,27.644,41.203,36.17,24.27,59.9,48.5,estimated_from_bandwidth_scaling
+LLaMA-3.2-3B,3.0,6.0,256,108.34,176.23,82.317,128.74,12.15,7.77,60.5,46.9,estimated_from_bandwidth_scaling
+TinyLlama-1.1B,1.1,2.2,512,74.2,144.31,29.614,50.337,33.77,19.87,61.8,47.6,measured
+LLaMA-3.2-1B,1.0,2.0,512,80.7,129.24,31.847,52.118,31.40,19.19,52.3,38.3,estimated_from_bandwidth_scaling
+LLaMA-3.2-3B,3.0,6.0,512,219.24,355.93,103.281,168.644,9.68,5.93,48.2,35.6,estimated_from_bandwidth_scaling
