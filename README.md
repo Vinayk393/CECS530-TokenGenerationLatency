@@ -1,7 +1,6 @@
 # Token-Generation Latency Benchmarking in LLaMA
 ### Mac M4 16GB vs Mac M2 8GB — Apple Silicon Unified Memory Study
 
-> **CPS 499/573** · Security and Safety in Autonomous Systems · University of Dayton
 
 ---
 
