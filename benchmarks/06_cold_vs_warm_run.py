@@ -12,9 +12,6 @@ Usage:
     python 06_cold_vs_warm_run.py
     python 06_cold_vs_warm_run.py --prompt_length 128 --warm_runs 10
 
-Output:
-    results/06_cold_vs_warm_run.json
-    plots/06_cold_vs_warm_run.png
 """
 
 import argparse
