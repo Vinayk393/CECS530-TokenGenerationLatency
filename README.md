@@ -1,4 +1,5 @@
 # Token-Generation Latency Benchmarking in LLaMA
+# CECS530-TokenGenerationLatency
 ### Mac M4 16GB vs Mac M2 8GB — Apple Silicon Unified Memory Study
 
 
@@ -185,4 +186,3 @@ See `optimization/kv_cache_proposal.md` for full analysis.
 - Gerganov, "llama.cpp," GitHub, 2023
 - Williams et al., "Roofline: An Insightful Visual Performance Model," CACM 2009
 - Dettmers & Zettlemoyer, "The Case for 4-bit Precision," ICML 2023
-# CECS530-TokenGenerationLatency
