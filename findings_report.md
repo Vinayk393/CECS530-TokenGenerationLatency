@@ -2,7 +2,6 @@
 # Token-Generation Latency Benchmarking in LLaMA
 ## Research Findings Report
 
-**Course:** CPS 499/573 — Security and Safety in Autonomous Systems  
 **Platform:** Mac M4 16GB (120 GB/s) vs Mac M2 8GB (100 GB/s) · MPS backend  
 **Model:** TinyLlama-1.1B-Chat-v1.0 · float16 · batch=1  
 **Measurement:** `time.perf_counter()` with `torch.mps.synchronize()` before/after
