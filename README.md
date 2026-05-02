@@ -93,8 +93,8 @@ llama-latency-m4-vs-m2/
 ## Setup
 
 ```bash
-git clone https://github.com/<your-username>/llama-latency-m4-vs-m2.git
-cd llama-latency-m4-vs-m2
+git clone https://github.com/Vinayk393/CECS530-TokenGenerationLatency.git
+cd CECS530-TokenGenerationLatency
 
 python3 -m venv .venv
 source .venv/bin/activate
