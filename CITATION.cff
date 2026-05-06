@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 title: "Token-Generation Latency Benchmarking in LLaMA on Apple Silicon"
-message: "If you use this benchmark suite, please cite it using the metadata below."
+message: "If you use this benchmark suite, please cite it as below."
 type: software
 authors:
   - family-names: Krishna
@@ -12,17 +12,16 @@ authors:
     email: jaswanth.maddineni01@student.csulb.edu
     affiliation: California State University, Long Beach
 repository-code: "https://github.com/Vinayk393/CECS530-TokenGenerationLatency"
-url: "https://github.com/Vinayk393/CECS530-TokenGenerationLatency"
 abstract: >
-  A controlled, bandwidth-focused benchmarking study of LLaMA-family token-generation
-  latency on Apple Silicon (Mac M4 16GB vs Mac M2 8GB). Measures TTFT, per-token
-  latency, throughput, cold/warm startup, and tail-latency distributions across nine
-  experimental dimensions. Shows that batch-1 decode is bandwidth-dominated, and
-  analytically estimates KV-cache quantization speedup.
+  A controlled, bandwidth-focused benchmarking study of LLaMA-family
+  token-generation latency on Apple Silicon (Mac M4 16GB vs Mac M2 8GB).
+  Measures TTFT, per-token latency, throughput, cold/warm startup, and
+  tail-latency distributions. Memory bandwidth is the primary explanatory
+  variable; GPU core count, cache hierarchy, RAM, and OS version are
+  acknowledged as residual confounders.
 keywords:
   - LLaMA
-  - token generation
-  - per-token latency
+  - token generation latency
   - Apple Silicon
   - unified memory
   - KV-cache

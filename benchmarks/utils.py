@@ -3,9 +3,12 @@ benchmarks/utils.py
 --------------------
 Shared utilities for all benchmark scripts.
 
-Provides: get_device, sync_device, load_model_and_tokenizer, save_csv,
-          save_json, save_metadata, set_seed, build_prompt,
-          ensure_output_dir, get_device_label, print_run_header.
+Provides: get_device, sync_device, load_model_and_tokenizer,
+          save_csv, save_json, save_metadata, set_seed,
+          build_prompt, ensure_output_dir, print_run_header.
+
+Import in any benchmark script:
+    from utils import get_device, sync_device, load_model_and_tokenizer, ...
 """
 
 import csv
@@ -13,7 +16,6 @@ import json
 import os
 import platform
 import random
-import sys
 import time
 from pathlib import Path
 
@@ -21,16 +23,23 @@ import numpy as np
 import torch
 
 try:
-    import transformers
-    TRANSFORMERS_VERSION = transformers.__version__
+    import transformers as _tf
+    TRANSFORMERS_VERSION = _tf.__version__
 except ImportError:
     TRANSFORMERS_VERSION = "unknown"
+
+_BASE_TEXT = (
+    "The quick brown fox jumps over the lazy dog. "
+    "Artificial intelligence is transforming the world. "
+    "Large language models generate text token by token. "
+    "Memory bandwidth is the dominant bottleneck in autoregressive decoding. "
+)
 
 
 # ── Device ────────────────────────────────────────────────────────────────────
 
 def get_device() -> str:
-    """Return the best available device string: 'mps', 'cuda', or 'cpu'."""
+    """Return best available device: 'mps', 'cuda', or 'cpu'."""
     if torch.backends.mps.is_available():
         return "mps"
     if torch.cuda.is_available():
@@ -39,28 +48,26 @@ def get_device() -> str:
 
 
 def sync_device(device: str) -> None:
-    """Synchronize the device before taking a wall-clock timestamp."""
+    """Synchronize device before taking a wall-clock timestamp."""
     if device == "mps":
         torch.mps.synchronize()
     elif device == "cuda":
         torch.cuda.synchronize()
-    # CPU: no-op
 
 
 def print_run_header(model_name: str, device: str, device_name: str,
                      precision: str, output_path: str) -> None:
     """Print a standardized run header for every benchmark script."""
-    mps_available = torch.backends.mps.is_available()
     print("=" * 60)
-    print(f"  Model:      {model_name}")
-    print(f"  Device:     {device}  (MPS available: {mps_available})")
-    print(f"  Label:      {device_name}")
-    print(f"  Precision:  {precision}")
-    print(f"  Output:     {output_path}")
+    print(f"  Model:     {model_name}")
+    print(f"  Device:    {device}  (MPS: {torch.backends.mps.is_available()})")
+    print(f"  Label:     {device_name}")
+    print(f"  Precision: {precision}")
+    print(f"  Output:    {output_path}")
     print("=" * 60)
-    if device == "cpu" and mps_available is False:
+    if device == "cpu":
         print("  WARNING: MPS not available. Falling back to CPU.")
-        print("  Results will not match paper values obtained on Apple Silicon.")
+        print("  Results will not match paper values from Apple Silicon.")
         print("=" * 60)
 
 
@@ -81,9 +88,7 @@ def load_model_and_tokenizer(model_name: str, device: str,
                               dtype=torch.float16):
     """
     Load a HuggingFace causal LM and tokenizer onto `device`.
-
-    Returns (model, tokenizer).
-    Raises RuntimeError with a clear message if loading fails.
+    Returns (model, tokenizer). Raises RuntimeError on failure.
     """
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -96,14 +101,12 @@ def load_model_and_tokenizer(model_name: str, device: str,
     print(f"  Loading model ({dtype})...")
     try:
         model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=dtype,
-            device_map=device,
+            model_name, torch_dtype=dtype, device_map=device
         )
         model.eval()
     except Exception as e:
         raise RuntimeError(
-            f"Failed to load model '{model_name}' on device '{device}': {e}"
+            f"Failed to load model '{model_name}' on '{device}': {e}"
         ) from e
 
     return model, tokenizer
@@ -111,19 +114,8 @@ def load_model_and_tokenizer(model_name: str, device: str,
 
 # ── Prompt builder ────────────────────────────────────────────────────────────
 
-_BASE_TEXT = (
-    "The quick brown fox jumps over the lazy dog. "
-    "Artificial intelligence is transforming the world. "
-    "Large language models generate text token by token. "
-    "Memory bandwidth is the dominant bottleneck in autoregressive decoding. "
-)
-
-
 def build_prompt(target_length: int, tokenizer) -> str:
-    """
-    Return a string whose tokenized length is exactly `target_length`.
-    Repeats _BASE_TEXT until long enough, then truncates.
-    """
+    """Return a string tokenized to exactly `target_length` tokens."""
     text = _BASE_TEXT
     while len(tokenizer.encode(text)) < target_length:
         text += _BASE_TEXT
@@ -134,10 +126,7 @@ def build_prompt(target_length: int, tokenizer) -> str:
 # ── Output paths ──────────────────────────────────────────────────────────────
 
 def ensure_output_dir(output_dir: str, device_name: str) -> Path:
-    """
-    Create and return Path(output_dir) / device_name.
-    E.g., ensure_output_dir('results', 'Mac_M4_16GB') → Path('results/Mac_M4_16GB')
-    """
+    """Create and return Path(output_dir) / device_name."""
     path = Path(output_dir) / device_name
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -145,44 +134,37 @@ def ensure_output_dir(output_dir: str, device_name: str) -> Path:
 
 # ── CSV I/O ───────────────────────────────────────────────────────────────────
 
-def save_csv(rows: list[dict], filepath: str | Path) -> None:
-    """
-    Write a list of dicts to a CSV file.
-    All rows must share the same keys; fieldnames taken from the first row.
-    """
+def save_csv(rows: list, filepath) -> None:
+    """Write list of dicts to CSV. All rows must share the same keys."""
     filepath = Path(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     if not rows:
-        print(f"  [save_csv] No rows to write → {filepath}")
+        print(f"  [save_csv] No rows → {filepath}")
         return
-    fieldnames = list(rows[0].keys())
     with open(filepath, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
-    print(f"  Saved CSV → {filepath}")
+    print(f"  Saved → {filepath}")
 
 
 # ── JSON I/O ──────────────────────────────────────────────────────────────────
 
-def save_json(data: dict | list, filepath: str | Path) -> None:
+def save_json(data, filepath) -> None:
     """Write data as indented JSON."""
     filepath = Path(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     with open(filepath, "w") as f:
         json.dump(data, f, indent=2)
-    print(f"  Saved JSON → {filepath}")
+    print(f"  Saved → {filepath}")
 
 
 # ── Metadata ──────────────────────────────────────────────────────────────────
 
 def save_metadata(model_name: str, device: str, device_name: str,
                   precision: str, measurement_type: str,
-                  output_dir: str | Path, filename: str = "metadata.json") -> None:
-    """
-    Write a run-level metadata JSON file alongside benchmark results.
-    Useful for audit trails and reproducibility verification.
-    """
+                  output_dir, filename: str = "metadata.json") -> None:
+    """Write a run-level metadata JSON for audit and reproducibility."""
     meta = {
         "model": model_name,
         "device": device,
@@ -196,3 +178,16 @@ def save_metadata(model_name: str, device: str, device_name: str,
         "measurement_type": measurement_type,
     }
     save_json(meta, Path(output_dir) / filename)
+
+
+# ── KV-cache sizing (analytical) ──────────────────────────────────────────────
+
+def kv_cache_mb(layers: int, kv_heads: int, head_dim: int,
+                context: int, bytes_per_elem: float) -> float:
+    """
+    KV-cache size in MB (analytical formula).
+    M_KV = 2 * layers * kv_heads * head_dim * context * bytes_per_elem
+
+    TinyLlama-1.1B: kv_cache_mb(22, 4, 64, 1000, 2.0) ≈ 22.5 MB
+    """
+    return 2 * layers * kv_heads * head_dim * context * bytes_per_elem / 1e6
