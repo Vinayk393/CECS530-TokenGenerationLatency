@@ -37,7 +37,7 @@ python -c "import torch; print(torch.__version__, torch.backends.mps.is_availabl
 python -m pytest tests/ -v
 ```
 
-Formula tests and schema tests run instantly. Smoke test requires Step 3.
+Formula and schema tests run instantly. The benchmark smoke test is run separately in Step 3 because it may download the model on first use.
 
 ---
 
@@ -102,7 +102,11 @@ python benchmarks/08_kvcache_size_vs_context.py   # analytical, no GPU
 ```
 
 ---
+Outputs are written to:
 
+```text
+results/
+graphs/
 ## Step 6 — Verify everything
 
 ```bash
@@ -132,13 +136,17 @@ make verify   # smoke test + pytest
 | `modeled` | 07 | Bandwidth-scaling projection from measured F16 baseline |
 
 ---
-
 ## Quantization: measured vs modeled
 
 Default (`bench-07-modeled`): measures F16 PTL directly, projects Q4/Q8 via
-bandwidth scaling. Output labeled `measurement_type=modeled`.
+bandwidth scaling. Output is labeled `measurement_type=modeled`.
+
+The paper treats Q8_0 and Q4_K_M as modeled projections unless GGUF files
+are supplied and the llama.cpp path is used.
 
 For measured Q4/Q8 speedup, install llama.cpp and provide GGUF files:
+
 ```bash
 make bench-07-llamacpp
 ```
+
