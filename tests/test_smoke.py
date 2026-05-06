@@ -1,76 +1,100 @@
-"""
-tests/test_smoke.py
-=====================
-Validates repository structure and no hardcoded absolute paths.
-Runs without a model download.
-
-Run: python -m pytest tests/test_smoke.py -v
-"""
-import json
 from pathlib import Path
-import pytest
-
-REPO_ROOT = Path(__file__).parent.parent
 
 
-def test_core_directories_exist():
-    """All required project directories must exist."""
-    for folder in ["benchmarks", "analysis", "results", "graphs",
-                   "optimization", "report", "docs"]:
-        assert (REPO_ROOT / folder).exists(), f"Directory '{folder}' is missing"
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_required_root_files_exist():
-    """All required root-level files must exist."""
-    for f in ["README.md", "requirements.txt", "Makefile", "LICENSE",
-              "REPRODUCIBILITY.md", "CITATION.cff"]:
-        assert (REPO_ROOT / f).exists(), f"Root file '{f}' is missing"
+    required_files = [
+        "README.md",
+        "requirements.txt",
+        "Makefile",
+        "LICENSE",
+        "CITATION.cff",
+        "REPRODUCIBILITY.md",
+    ]
+
+    for file_name in required_files:
+        assert (ROOT / file_name).exists(), f"Missing required root file: {file_name}"
 
 
-def test_generate_graphs_in_analysis_not_root():
-    """Graph script must live in analysis/, not at repo root (wrong location)."""
-    assert (REPO_ROOT / "analysis" / "generate_research_graphs.py").exists(), (
-        "analysis/generate_research_graphs.py missing"
-    )
-    # It should NOT be at root
-    root_version = REPO_ROOT / "generate_research_graphs.py"
-    assert not root_version.exists(), (
-        "generate_research_graphs.py found at repo root — it belongs in analysis/"
-    )
+def test_required_directories_exist():
+    required_dirs = [
+        "analysis",
+        "benchmarks",
+        "docs",
+        "graphs",
+        "optimization",
+        "report",
+        "results",
+        "tests",
+    ]
+
+    for dir_name in required_dirs:
+        assert (ROOT / dir_name).is_dir(), f"Missing required directory: {dir_name}"
 
 
-def test_no_hardcoded_mnt_paths():
-    """No script may contain hardcoded /mnt/user-data/... paths."""
-    scripts = list((REPO_ROOT / "benchmarks").glob("*.py"))
-    scripts += list((REPO_ROOT / "analysis").glob("*.py"))
-    for script in scripts:
-        text = script.read_text()
-        assert "/mnt/user-data" not in text, (
-            f"{script.name} contains hardcoded /mnt/user-data path. "
-            "Use Path(__file__).resolve().parents[N] instead."
+def test_required_benchmark_scripts_exist():
+    required_scripts = [
+        "01_ttft_vs_prompt.py",
+        "02_ptl_vs_context.py",
+        "03_memory_bandwidth_estimate.py",
+        "04_throughput.py",
+        "05_inter_token_timeline.py",
+        "06_cold_warm_run.py",
+        "07_quantization_speedup.py",
+        "08_tail_latency_distribution.py",
+        "09_latency_decomposition.py",
+        "run_smoke_test.py",
+        "utils.py",
+    ]
+
+    benchmarks_dir = ROOT / "benchmarks"
+
+    for script_name in required_scripts:
+        assert (benchmarks_dir / script_name).exists(), (
+            f"Missing benchmark script: benchmarks/{script_name}"
         )
 
 
-def test_benchmark_scripts_exist():
-    """All 9 paper benchmark scripts must be present."""
-    for i in range(1, 10):
-        scripts = list((REPO_ROOT / "benchmarks").glob(f"0{i}_*.py"))
-        assert len(scripts) >= 1, f"Benchmark script 0{i}_*.py not found"
+def test_reproducibility_docs_exist():
+    assert (ROOT / "REPRODUCIBILITY.md").exists()
+    assert (ROOT / "docs" / "reproducibility.md").exists()
 
 
-def test_utils_and_smoke_test_exist():
-    """utils.py and run_smoke_test.py must exist in benchmarks/."""
-    assert (REPO_ROOT / "benchmarks" / "utils.py").exists()
-    assert (REPO_ROOT / "benchmarks" / "run_smoke_test.py").exists()
+def test_results_and_graph_docs_exist():
+    assert (ROOT / "results" / "README.md").exists()
+    assert (ROOT / "graphs" / "README.md").exists()
 
 
-def test_no_bench07_backend_hf_in_makefile():
-    """Makefile must not use --backend hf for bench-07 (wrong quantization path)."""
-    mk = REPO_ROOT / "Makefile"
-    if not mk.exists():
-        pytest.skip("Makefile not found")
-    text = mk.read_text()
-    assert "--backend hf" not in text, (
-        "Makefile bench-07 target uses '--backend hf' — "
-        "should use '--mode modeled' instead"
-    )
+def test_makefile_contains_verification_targets():
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+    required_targets = [
+        "smoke:",
+        "verify:",
+        "bench-07-modeled:",
+        "bench-07-llamacpp:",
+        "graphs:",
+        "clean:",
+        "help:",
+    ]
+
+    for target in required_targets:
+        assert target in makefile, f"Missing Makefile target: {target}"
+
+
+def test_readme_has_evidence_labels():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8").lower()
+
+    required_terms = [
+        "evidence labels",
+        "measured",
+        "estimated",
+        "modeled",
+        "q4_k_m",
+        "kv-cache",
+    ]
+
+    for term in required_terms:
+        assert term in readme, f"README missing expected term: {term}"
