@@ -1,0 +1,21 @@
+{
+  "hardware_label": "Mac_M4_16GB",
+  "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "device": "mps",
+  "precision": "float16",
+  "backend": "HuggingFace Transformers 4.40 / MPS",
+  "python_version": "3.11",
+  "torch_version": "2.2.2",
+  "transformers_version": "4.40.2",
+  "os": "macOS 15.0",
+  "chip": "Apple M4 (120 GB/s)",
+  "ram_gb": 16,
+  "batch_size": 1,
+  "n_ttft_trials": 5,
+  "n_ttft_excluded": 1,
+  "n_ptl_tokens": 20,
+  "n_ptl_transient_skip": 2,
+  "run_date": "2026-05-02",
+  "repo": "https://github.com/Vinayk393/CECS530-TokenGenerationLatency",
+  "paper": "Token-Generation Latency Benchmarking in LLaMA, CECS 530, 2026"
+}

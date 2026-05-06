@@ -1,176 +1,108 @@
 """
-01_ttft_vs_prompt_length.py
-----------------------------
-Measures Time To First Token (TTFT) across different prompt lengths.
+benchmarks/01_ttft_vs_prompt_length.py
+=======================================
+Measures Time to First Token (TTFT) across prompt lengths.
 
-Requirements:
-    pip install transformers torch accelerate
+Paper alignment (Section 4.3, 4.5):
+  TTFT measurement: "One full forward pass over the prompt, timed from call
+  entry to first token emission. Five warm trials per configuration; first excluded."
 
-Usage:
-    python 01_ttft_vs_prompt_length.py
-    python 01_ttft_vs_prompt_length.py --model TinyLlama/TinyLlama-1.1B-Chat-v1.0
-    python 01_ttft_vs_prompt_length.py --model meta-llama/Llama-3.2-1B --prompt_lengths 32 64 128 256 512
+  Timing uses raw model() forward pass (NOT model.generate()) to match the
+  paper's description of "one full forward pass" without HuggingFace generation
+  overhead contaminating the prefill timing.
 
-Output:
-    results/01_ttft_vs_prompt_length.json
-    plots/01_ttft_vs_prompt_length.png
+  Timing window:
+      sync_device()            ← GPU idle before timer
+      t0 = perf_counter()
+      model(input_ids=prompt)  ← pure prefill forward pass
+      sync_device()            ← GPU done before timer
+      ttft_ms = (perf_counter() - t0) * 1000
+
+Evidence label: measured
+Output: results/<device_name>/01_ttft_vs_prompt_length.csv
+
+Expected results (paper Table 4):
+    M4: 32→16.1ms, 128→26.9ms, 256→42.7ms, 512→77.4ms, 1024→197.5ms
+    M2: 32→27.5ms, 128→45.0ms, 256→69.5ms, 512→121.7ms, 1024→335.9ms
 """
 
-import argparse
-import json
-import os
-import time
-import statistics
-
+import argparse, statistics, sys, time
+from pathlib import Path
 import torch
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-from transformers import AutoTokenizer, AutoModelForCausalLM
 
-RESULTS_DIR = "results"
-PLOTS_DIR   = "plots"
-os.makedirs(RESULTS_DIR, exist_ok=True)
-os.makedirs(PLOTS_DIR,   exist_ok=True)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "benchmarks"))
+from utils import (build_prompt, ensure_output_dir, get_device,
+                   load_model_and_tokenizer, print_run_header,
+                   save_csv, save_metadata, set_seed, sync_device)
 
-DEFAULT_MODEL          = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-DEFAULT_PROMPT_LENGTHS = [32, 64, 128, 256, 512]
-DEFAULT_TRIALS         = 5
-BASE_TEXT = (
-    "The quick brown fox jumps over the lazy dog. "
-    "Artificial intelligence is transforming the world. "
-    "Large language models generate text token by token. "
-)
+# Paper §4.3 parameters
+PROMPT_LENGTHS = [32, 128, 256, 512, 1024]   # 7 log-spaced (paper uses these 5)
+N_TRIALS       = 5   # "5 per config"
+N_EXCLUDE      = 1   # "first excluded" (MPS kernel compile / cold cache)
 
 
-def build_prompt(target_length: int, tokenizer) -> str:
-    """Repeat base text until tokenized length >= target_length."""
-    text = BASE_TEXT
-    while len(tokenizer.encode(text)) < target_length:
-        text += BASE_TEXT
-    tokens = tokenizer.encode(text)[:target_length]
-    return tokenizer.decode(tokens)
+def measure_ttft(model, tokenizer, device, prompt_length):
+    """
+    Measure TTFT as raw prefill forward pass.
+    Returns dict with mean, std, min, max over warm trials.
+    """
+    prompt  = build_prompt(prompt_length, tokenizer)
+    actual  = len(tokenizer.encode(prompt))
+    inputs  = tokenizer(prompt, return_tensors="pt").to(device)
 
+    samples = []
+    for trial in range(N_TRIALS):
+        sync_device(device)
+        t0 = time.perf_counter()
+        with torch.no_grad():
+            _ = model(input_ids=inputs["input_ids"], use_cache=True)
+        sync_device(device)
+        samples.append((time.perf_counter() - t0) * 1000)
 
-def measure_ttft(model, tokenizer, prompt: str, device: str) -> float:
-    """Return TTFT in milliseconds for a single prompt."""
-    inputs = tokenizer(prompt, return_tensors="pt").to(device)
-
-    # Synchronise before timing
-    if device == "cuda":
-        torch.cuda.synchronize()
-    elif device == "mps":
-        torch.mps.synchronize()
-
-    t0 = time.perf_counter()
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=1,
-            do_sample=False,
-            use_cache=True,
-        )
-    if device == "cuda":
-        torch.cuda.synchronize()
-    elif device == "mps":
-        torch.mps.synchronize()
-
-    return (time.perf_counter() - t0) * 1000  # ms
+    warm = samples[N_EXCLUDE:]   # exclude first (MPS shader compile)
+    return {
+        "prompt_length":    actual,
+        "ttft_mean_ms":     round(statistics.mean(warm), 2),
+        "ttft_std_ms":      round(statistics.stdev(warm), 2) if len(warm) > 1 else 0.0,
+        "ttft_min_ms":      round(min(warm), 2),
+        "ttft_max_ms":      round(max(warm), 2),
+        "n_warm_trials":    len(warm),
+        "measurement_type": "measured",
+        "timing_method":    "raw_prefill_forward_pass",
+    }
 
 
 def main(args):
-    print(f"Loading model: {args.model}")
-    device = (
-        "cuda" if torch.cuda.is_available()
-        else "mps"  if torch.backends.mps.is_available()
-        else "cpu"
-    )
-    print(f"Device: {device}")
+    set_seed(args.seed)
+    device  = get_device()
+    out_dir = ensure_output_dir(args.output_dir, args.device_name)
+    print_run_header(args.model, device, args.device_name, "float16", str(out_dir))
+    print(f"  Timing: raw prefill forward pass (not generate())")
+    print(f"  Trials: {N_TRIALS} per config, first {N_EXCLUDE} excluded")
+    print(f"  Prompt lengths: {PROMPT_LENGTHS}\n")
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
-    model     = AutoModelForCausalLM.from_pretrained(
-        args.model,
-        torch_dtype=torch.float16,
-        device_map=device,
-    )
-    model.eval()
+    model, tokenizer = load_model_and_tokenizer(args.model, device, torch.float16)
 
-    results = []
+    rows = []
+    for pl in PROMPT_LENGTHS:
+        print(f"  Prompt {pl:>5} tokens ...", end=" ", flush=True)
+        r = measure_ttft(model, tokenizer, device, pl)
+        r.update({"device": device, "device_name": args.device_name,
+                  "model": args.model, "precision": "float16"})
+        rows.append(r)
+        print(f"TTFT = {r['ttft_mean_ms']:.1f} ms ± {r['ttft_std_ms']:.1f} ms")
 
-    for pl in args.prompt_lengths:
-        prompt = build_prompt(pl, tokenizer)
-        actual_len = len(tokenizer.encode(prompt))
-        print(f"\nPrompt length: {actual_len} tokens")
-
-        # Warm-up run (not recorded)
-        measure_ttft(model, tokenizer, prompt, device)
-
-        latencies = []
-        for t in range(args.trials):
-            ms = measure_ttft(model, tokenizer, prompt, device)
-            latencies.append(ms)
-            print(f"  Trial {t+1}: {ms:.1f} ms")
-
-        entry = {
-            "prompt_length": actual_len,
-            "mean_ms":   round(statistics.mean(latencies),   2),
-            "median_ms": round(statistics.median(latencies), 2),
-            "stdev_ms":  round(statistics.stdev(latencies),  2) if len(latencies) > 1 else 0,
-            "min_ms":    round(min(latencies), 2),
-            "max_ms":    round(max(latencies), 2),
-            "raw_ms":    [round(v, 2) for v in latencies],
-        }
-        results.append(entry)
-        print(f"  Mean: {entry['mean_ms']} ms  |  Stdev: {entry['stdev_ms']} ms")
-
-    # Save JSON
-    out_json = os.path.join(RESULTS_DIR, "01_ttft_vs_prompt_length.json")
-    with open(out_json, "w") as f:
-        json.dump({"model": args.model, "device": device, "data": results}, f, indent=2)
-    print(f"\nResults saved → {out_json}")
-
-    # Plot
-    lens   = [r["prompt_length"] for r in results]
-    means  = [r["mean_ms"]       for r in results]
-    stdevs = [r["stdev_ms"]      for r in results]
-
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    fig.suptitle(f"TTFT vs Prompt Length\n{args.model} · {device}", fontsize=13, fontweight="bold")
-
-    # Linear scale
-    ax = axes[0]
-    ax.errorbar(lens, means, yerr=stdevs, marker="o", linewidth=2,
-                capsize=4, color="#3B82F6", ecolor="#93C5FD", label="Mean ± stdev")
-    ax.fill_between(lens,
-                    [m - s for m, s in zip(means, stdevs)],
-                    [m + s for m, s in zip(means, stdevs)],
-                    alpha=0.15, color="#3B82F6")
-    ax.set_xlabel("Prompt length (tokens)")
-    ax.set_ylabel("TTFT (ms)")
-    ax.set_title("Linear scale")
-    ax.grid(True, alpha=0.3)
-    ax.legend()
-
-    # Log scale
-    ax = axes[1]
-    ax.errorbar(lens, means, yerr=stdevs, marker="o", linewidth=2,
-                capsize=4, color="#8B5CF6", ecolor="#C4B5FD")
-    ax.set_yscale("log")
-    ax.set_xlabel("Prompt length (tokens)")
-    ax.set_ylabel("TTFT (ms, log scale)")
-    ax.set_title("Log scale — reveals growth regime")
-    ax.yaxis.set_major_formatter(ticker.ScalarFormatter())
-    ax.grid(True, alpha=0.3, which="both")
-
-    plt.tight_layout()
-    out_png = os.path.join(PLOTS_DIR, "01_ttft_vs_prompt_length.png")
-    plt.savefig(out_png, dpi=150, bbox_inches="tight")
-    print(f"Plot saved → {out_png}")
-    plt.show()
+    save_csv(rows, out_dir / "01_ttft_vs_prompt_length.csv")
+    save_metadata(args.model, device, args.device_name, "float16",
+                  "measured", out_dir, "01_ttft_vs_prompt_length_metadata.json")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Benchmark TTFT vs prompt length")
-    parser.add_argument("--model",          default=DEFAULT_MODEL)
-    parser.add_argument("--prompt_lengths", nargs="+", type=int, default=DEFAULT_PROMPT_LENGTHS)
-    parser.add_argument("--trials",         type=int,             default=DEFAULT_TRIALS)
+    parser = argparse.ArgumentParser(description="TTFT vs prompt length [measured]")
+    parser.add_argument("--model",       default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+    parser.add_argument("--device_name", default="Mac_M4_16GB",
+                        help="Mac_M4_16GB or Mac_M2_8GB")
+    parser.add_argument("--output_dir",  default=str(REPO_ROOT / "results"))
+    parser.add_argument("--seed",        type=int, default=42)
     main(parser.parse_args())

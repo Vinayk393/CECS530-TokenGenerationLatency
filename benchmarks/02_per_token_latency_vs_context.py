@@ -1,209 +1,137 @@
 """
-02_per_token_latency_vs_context.py
-------------------------------------
-Measures per-token decode latency as context grows.
-Generates tokens one at a time and records the wall-clock cost of each step,
-revealing the KV-cache growth effect and the inflection point where
-memory-bandwidth pressure dominates.
+benchmarks/02_per_token_latency_vs_context.py
+==============================================
+Measures per-token latency (PTL) as a function of context length.
 
-Requirements:
-    pip install transformers torch accelerate matplotlib
+Paper alignment (Section 4.3, 4.5):
+  "PTL window: 20 tokens; PTL exclude: First 2 tokens (eliminate transient)"
 
-Usage:
-    python 02_per_token_latency_vs_context.py
-    python 02_per_token_latency_vs_context.py --context_lengths 32 64 128 256 512 1024
-    python 02_per_token_latency_vs_context.py --model meta-llama/Llama-3.2-1B
+  Exact decode loop from paper (Section 4.5):
+      for i in range(n_tokens + 2):   # +2 for excluded transients
+          torch.mps.synchronize()
+          t0 = time.perf_counter()
+          out = model(input_ids=next_tok, past_key_values=past_kv, use_cache=True)
+          torch.mps.synchronize()
+          ptl_ms = (time.perf_counter() - t0) * 1000
+          if i >= 2:  # skip first two transient tokens
+              samples.append(ptl_ms)
 
-Output:
-    results/02_per_token_latency_vs_context.json
-    plots/02_per_token_latency_vs_context.png
+  N_TRANSIENT_SKIP = 2  (paper: "First two tokens excluded")
+  N_DECODE_TOKENS  = 20 (paper: "20 tokens per measurement window")
+
+  Token 0: pipeline boundary with TTFT prefill
+  Token 1: MPS pipeline ramp-up transient
+  Tokens 2-21: steady-state decode → PTL samples
+
+Evidence label: measured
+Output: results/<device_name>/02_per_token_latency_vs_context.csv
+
+Expected results (paper Table 5):
+    M4: ctx32→19.3ms, ctx128→20.4ms, ctx256→22.7ms, ctx512→30.1ms, ctx1024→48.6ms
+    M2: ctx32→28.5ms, ctx128→30.9ms, ctx256→35.1ms, ctx512→45.8ms, ctx1024→76.4ms
 """
 
-import argparse
-import json
-import os
-import time
-import statistics
-
+import argparse, statistics, sys, time
+from pathlib import Path
 import torch
-import matplotlib.pyplot as plt
-from transformers import AutoTokenizer, AutoModelForCausalLM
 
-RESULTS_DIR = "results"
-PLOTS_DIR   = "plots"
-os.makedirs(RESULTS_DIR, exist_ok=True)
-os.makedirs(PLOTS_DIR,   exist_ok=True)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "benchmarks"))
+from utils import (build_prompt, ensure_output_dir, get_device,
+                   load_model_and_tokenizer, print_run_header,
+                   save_csv, save_metadata, set_seed, sync_device)
 
-DEFAULT_MODEL           = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-DEFAULT_CONTEXT_LENGTHS = [32, 64, 128, 256, 512, 768, 1024]
-DEFAULT_DECODE_TOKENS   = 20   # tokens generated after the prompt to measure steady-state PTL
-DEFAULT_TRIALS          = 3
-BASE_TEXT = (
-    "The quick brown fox jumps over the lazy dog. "
-    "Artificial intelligence is transforming the world. "
-    "Large language models generate text token by token. "
-)
+# Paper §4.3 — must match paper exactly
+CONTEXT_LENGTHS  = [32, 128, 256, 512, 1024]
+N_TRANSIENT_SKIP = 2    # "PTL exclude: First 2 tokens"
+N_DECODE_TOKENS  = 20   # "PTL window: 20 tokens"
 
 
-def build_prompt(target_length: int, tokenizer) -> str:
-    text = BASE_TEXT
-    while len(tokenizer.encode(text)) < target_length:
-        text += BASE_TEXT
-    tokens = tokenizer.encode(text)[:target_length]
-    return tokenizer.decode(tokens)
-
-
-def sync(device: str):
-    if device == "cuda":
-        torch.cuda.synchronize()
-    elif device == "mps":
-        torch.mps.synchronize()
-
-
-def measure_ptl_at_context(model, tokenizer, prompt: str,
-                            decode_tokens: int, device: str) -> list[float]:
+def measure_ptl(model, tokenizer, device, context_length):
     """
-    Returns per-token latency (ms) for each of `decode_tokens` generated tokens.
-    The prompt establishes the context length.
-    First generated token is excluded (it overlaps with TTFT).
+    Measure PTL at a given context length using the exact decode loop
+    described in paper Section 4.5.
+
+    Loop runs N_TRANSIENT_SKIP + N_DECODE_TOKENS = 22 steps.
+    Only steps i >= N_TRANSIENT_SKIP contribute to PTL samples.
     """
-    inputs = tokenizer(prompt, return_tensors="pt").to(device)
-    input_ids = inputs["input_ids"]
+    prompt   = build_prompt(context_length, tokenizer)
+    actual   = len(tokenizer.encode(prompt))
+    inputs   = tokenizer(prompt, return_tensors="pt").to(device)
 
-    past_key_values = None
-    token_latencies = []
-
-    # --- prefill pass (TTFT, discarded) ---
-    sync(device)
+    # ── Prefill (establishes KV-cache, not timed as PTL) ──────────────────────
     with torch.no_grad():
-        out = model(input_ids=input_ids, use_cache=True)
-    past_key_values = out.past_key_values
-    next_token = out.logits[:, -1, :].argmax(dim=-1, keepdim=True)
-    sync(device)
+        out = model(input_ids=inputs["input_ids"], use_cache=True)
+    past_kv  = out.past_key_values
+    next_tok = out.logits[:, -1, :].argmax(dim=-1, keepdim=True)
 
-    # --- decode loop ---
-    for _ in range(decode_tokens):
-        sync(device)
+    # ── Decode loop — exactly as paper Section 4.5 ────────────────────────────
+    samples      = []
+    total_steps  = N_TRANSIENT_SKIP + N_DECODE_TOKENS  # 22 steps
+
+    for i in range(total_steps):
+        sync_device(device)               # ← paper: mps.synchronize() before timer
         t0 = time.perf_counter()
         with torch.no_grad():
-            out = model(
-                input_ids=next_token,
-                past_key_values=past_key_values,
-                use_cache=True,
-            )
-        sync(device)
+            out2 = model(input_ids=next_tok, past_key_values=past_kv, use_cache=True)
+        sync_device(device)               # ← paper: mps.synchronize() after
         elapsed_ms = (time.perf_counter() - t0) * 1000
-        token_latencies.append(elapsed_ms)
 
-        past_key_values = out.past_key_values
-        next_token = out.logits[:, -1, :].argmax(dim=-1, keepdim=True)
+        past_kv  = out2.past_key_values
+        next_tok = out2.logits[:, -1, :].argmax(dim=-1, keepdim=True)
 
-    return token_latencies
+        if i >= N_TRANSIENT_SKIP:         # ← paper: "if i >= 2: samples.append"
+            samples.append(elapsed_ms)
+
+    assert len(samples) == N_DECODE_TOKENS, (
+        f"Expected {N_DECODE_TOKENS} samples, got {len(samples)}"
+    )
+    sorted_s = sorted(samples)
+    return {
+        "context_length":   actual,
+        "ptl_mean_ms":      round(statistics.mean(samples), 2),
+        "ptl_std_ms":       round(statistics.stdev(samples), 2),
+        "ptl_p90_ms":       round(sorted_s[int(0.9 * len(sorted_s))], 2),
+        "ptl_min_ms":       round(min(samples), 2),
+        "ptl_max_ms":       round(max(samples), 2),
+        "throughput_tok_s": round(1000.0 / statistics.mean(samples), 2),
+        "n_samples":        len(samples),
+        "n_transient_skip": N_TRANSIENT_SKIP,
+        "measurement_type": "measured",
+        "timing_method":    "manual_kvcache_decode_loop_paper_sec4.5",
+    }
 
 
 def main(args):
-    print(f"Loading model: {args.model}")
-    device = (
-        "cuda" if torch.cuda.is_available()
-        else "mps"  if torch.backends.mps.is_available()
-        else "cpu"
-    )
-    print(f"Device: {device}")
+    set_seed(args.seed)
+    device  = get_device()
+    out_dir = ensure_output_dir(args.output_dir, args.device_name)
+    print_run_header(args.model, device, args.device_name, "float16", str(out_dir))
+    print(f"  PTL tokens collected:  {N_DECODE_TOKENS}")
+    print(f"  Transient tokens skip: {N_TRANSIENT_SKIP}  (paper §4.3)")
+    print(f"  Context lengths: {CONTEXT_LENGTHS}\n")
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
-    model     = AutoModelForCausalLM.from_pretrained(
-        args.model,
-        torch_dtype=torch.float16,
-        device_map=device,
-    )
-    model.eval()
+    model, tokenizer = load_model_and_tokenizer(args.model, device, torch.float16)
 
-    results = []
+    rows = []
+    for cl in CONTEXT_LENGTHS:
+        print(f"  Context {cl:>5} tokens ...", end=" ", flush=True)
+        r = measure_ptl(model, tokenizer, device, cl)
+        r.update({"device": device, "device_name": args.device_name,
+                  "model": args.model, "precision": "float16"})
+        rows.append(r)
+        print(f"PTL = {r['ptl_mean_ms']:.1f} ± {r['ptl_std_ms']:.1f} ms  "
+              f"({r['throughput_tok_s']:.1f} tok/s)")
 
-    for cl in args.context_lengths:
-        prompt     = build_prompt(cl, tokenizer)
-        actual_len = len(tokenizer.encode(prompt))
-        print(f"\nContext length: {actual_len} tokens")
-
-        # Warm-up
-        measure_ptl_at_context(model, tokenizer, prompt, 5, device)
-
-        all_ptls = []
-        for t in range(args.trials):
-            ptls = measure_ptl_at_context(model, tokenizer, prompt,
-                                          args.decode_tokens, device)
-            all_ptls.extend(ptls)
-            print(f"  Trial {t+1}: mean {statistics.mean(ptls):.1f} ms/tok")
-
-        entry = {
-            "context_length": actual_len,
-            "mean_ptl_ms":    round(statistics.mean(all_ptls),   2),
-            "median_ptl_ms":  round(statistics.median(all_ptls), 2),
-            "stdev_ptl_ms":   round(statistics.stdev(all_ptls),  2) if len(all_ptls) > 1 else 0,
-            "p90_ptl_ms":     round(sorted(all_ptls)[int(0.9 * len(all_ptls))], 2),
-            "raw_ptl_ms":     [round(v, 3) for v in all_ptls],
-        }
-        results.append(entry)
-        print(f"  Mean: {entry['mean_ptl_ms']} ms  |  P90: {entry['p90_ptl_ms']} ms")
-
-    # Save JSON
-    out_json = os.path.join(RESULTS_DIR, "02_per_token_latency_vs_context.json")
-    with open(out_json, "w") as f:
-        json.dump({"model": args.model, "device": device, "data": results}, f, indent=2)
-    print(f"\nResults saved → {out_json}")
-
-    # Plot
-    ctxs   = [r["context_length"] for r in results]
-    means  = [r["mean_ptl_ms"]    for r in results]
-    p90s   = [r["p90_ptl_ms"]     for r in results]
-    stdevs = [r["stdev_ptl_ms"]   for r in results]
-
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    fig.suptitle(f"Per-Token Latency vs Context Length\n{args.model} · {device}",
-                 fontsize=13, fontweight="bold")
-
-    ax = axes[0]
-    ax.plot(ctxs, means, "o-", color="#3B82F6", linewidth=2, label="Mean PTL")
-    ax.plot(ctxs, p90s,  "s--", color="#EF4444", linewidth=1.5, label="P90 PTL")
-    ax.fill_between(ctxs,
-                    [m - s for m, s in zip(means, stdevs)],
-                    [m + s for m, s in zip(means, stdevs)],
-                    alpha=0.15, color="#3B82F6")
-    ax.set_xlabel("Context length (tokens)")
-    ax.set_ylabel("Per-token latency (ms)")
-    ax.set_title("Mean & P90 latency")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    # Highlight inflection: largest jump between consecutive means
-    max_jump_idx = max(range(1, len(means)), key=lambda i: means[i] - means[i-1])
-    ax.axvline(ctxs[max_jump_idx], color="#F59E0B", linestyle=":", linewidth=2,
-               label=f"Inflection ≈ {ctxs[max_jump_idx]} tok")
-    ax.legend()
-
-    # Latency growth rate (derivative)
-    ax = axes[1]
-    if len(ctxs) > 1:
-        deltas = [means[i] - means[i-1] for i in range(1, len(means))]
-        mid_ctxs = [(ctxs[i] + ctxs[i-1]) / 2 for i in range(1, len(ctxs))]
-        ax.bar(mid_ctxs, deltas, width=[(ctxs[i]-ctxs[i-1])*0.6 for i in range(1,len(ctxs))],
-               color="#F59E0B", alpha=0.8)
-        ax.set_xlabel("Context length (tokens)")
-        ax.set_ylabel("Latency increase vs previous (ms)")
-        ax.set_title("Marginal latency cost per context step")
-        ax.grid(True, alpha=0.3, axis="y")
-
-    plt.tight_layout()
-    out_png = os.path.join(PLOTS_DIR, "02_per_token_latency_vs_context.png")
-    plt.savefig(out_png, dpi=150, bbox_inches="tight")
-    print(f"Plot saved → {out_png}")
-    plt.show()
+    save_csv(rows, out_dir / "02_per_token_latency_vs_context.csv")
+    save_metadata(args.model, device, args.device_name, "float16",
+                  "measured", out_dir, "02_per_token_latency_vs_context_metadata.json")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Benchmark PTL vs context length")
-    parser.add_argument("--model",           default=DEFAULT_MODEL)
-    parser.add_argument("--context_lengths", nargs="+", type=int, default=DEFAULT_CONTEXT_LENGTHS)
-    parser.add_argument("--decode_tokens",   type=int,             default=DEFAULT_DECODE_TOKENS)
-    parser.add_argument("--trials",          type=int,             default=DEFAULT_TRIALS)
+    parser = argparse.ArgumentParser(description="PTL vs context length [measured]")
+    parser.add_argument("--model",       default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+    parser.add_argument("--device_name", default="Mac_M4_16GB")
+    parser.add_argument("--output_dir",  default=str(REPO_ROOT / "results"))
+    parser.add_argument("--seed",        type=int, default=42)
     main(parser.parse_args())

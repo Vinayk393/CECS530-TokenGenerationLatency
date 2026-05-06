@@ -1,0 +1,6 @@
+context_length,ptl_mean_ms,ptl_std_ms,ptl_p90_ms,ptl_min_ms,ptl_max_ms,throughput_tok_s,n_samples,n_transient_skip,device,device_name,model,precision,measurement_type,timing_method
+32,19.12,0.93,20.12,16.77,20.15,52.29,20,2,mps,Mac_M4_16GB,TinyLlama/TinyLlama-1.1B-Chat-v1.0,float16,measured,manual_kvcache_decode_loop
+128,20.61,0.98,21.85,18.95,22.78,48.51,20,2,mps,Mac_M4_16GB,TinyLlama/TinyLlama-1.1B-Chat-v1.0,float16,measured,manual_kvcache_decode_loop
+256,22.55,1.08,23.78,20.61,25.33,44.35,20,2,mps,Mac_M4_16GB,TinyLlama/TinyLlama-1.1B-Chat-v1.0,float16,measured,manual_kvcache_decode_loop
+512,30.64,1.23,32.5,28.4,33.04,32.63,20,2,mps,Mac_M4_16GB,TinyLlama/TinyLlama-1.1B-Chat-v1.0,float16,measured,manual_kvcache_decode_loop
+1024,48.62,2.53,52.06,42.83,52.79,20.57,20,2,mps,Mac_M4_16GB,TinyLlama/TinyLlama-1.1B-Chat-v1.0,float16,measured,manual_kvcache_decode_loop

@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use this benchmark repository, please cite it as below."
+message: "If you use this benchmark suite, please cite it as below."
 title: "Token-Generation Latency Benchmarking in LLaMA on Apple Silicon"
 authors:
   - family-names: Krishna
@@ -10,8 +10,8 @@ authors:
     given-names: Jaswanth
     email: jaswanth.maddineni01@student.csulb.edu
     affiliation: California State University, Long Beach
-date-released: "2026-05-02"
 repository-code: "https://github.com/Vinayk393/CECS530-TokenGenerationLatency"
+date-released: "2026-05-02"
 license: MIT
 version: "1.0.0"
 keywords:
@@ -20,4 +20,5 @@ keywords:
   - Apple Silicon
   - KV-cache
   - memory bandwidth
+  - MPS
   - benchmarking

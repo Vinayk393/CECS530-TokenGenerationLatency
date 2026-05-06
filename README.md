@@ -6,11 +6,18 @@
 
 ## Overview
 
-This project benchmarks token-generation latency in LLaMA-family models across two Apple Silicon devices: Mac M4 16GB and Mac M2 8GB. The workload, model family, batch size, backend, and benchmark scripts are held constant to study how Apple Silicon memory bandwidth and related hardware-generation factors affect autoregressive decode latency.
+This project benchmarks token-generation latency in LLaMA-family models across
+two Apple Silicon devices: Mac M4 16GB and Mac M2 8GB. Model, backend, batch
+size, benchmark scripts, and software configuration are held constant. Memory
+bandwidth is the primary explanatory variable; GPU core count, cache hierarchy,
+RAM capacity, OS version, and thermal state are acknowledged as residual confounders.
 
-The main result is that M4 shows an observed **~1.5× per-token latency advantage** over M2 under this benchmark setup. Memory bandwidth is the primary explanatory variable, but GPU core count, cache hierarchy, RAM capacity, OS version, thermal state, and scheduler behavior are acknowledged as residual confounders that could not be independently controlled.
+The main result is that M4 shows an observed **~1.5× per-token latency advantage**
+over M2 under this benchmark setup (paper Section 5.2, Table 5).
 
-> Q4_K_M and Q8_0 results are provided as modeled projections unless `make bench-07-llamacpp` is run with matching GGUF models.
+> **Quantization:** Q4_K_M and Q8_0 results are **modeled projections** from
+> measured F16 baselines using bandwidth scaling. Use `make bench-07-llamacpp`
+> with GGUF files for physically measured quantization speedup.
 
 ---
 
@@ -18,8 +25,8 @@ The main result is that M4 shows an observed **~1.5× per-token latency advantag
 
 | Label | Meaning |
 |-------|---------|
-| `measured` | Directly timed using `time.perf_counter()` with explicit `mps.synchronize()` |
-| `analytical` | Computed from model architecture formula (e.g., KV-cache size) |
+| `measured` | Directly timed with `time.perf_counter()` + `mps.synchronize()` |
+| `analytical` | Computed from architecture formula (paper Eq. 4) |
 | `estimated` | Architecture proportions calibrated to measured PTL; not kernel-profiled |
 | `modeled` | Projected from measured F16 baseline via bandwidth-scaling assumptions |
 
@@ -27,43 +34,54 @@ The main result is that M4 shows an observed **~1.5× per-token latency advantag
 
 ## Hardware
 
-| Device | Chip | RAM | Memory Bandwidth | GPU Cores | OS | Backend |
-|--------|------|-----|-----------------|-----------|-----|---------|
+| Device | Chip | RAM | Bandwidth | GPU Cores | OS | Backend |
+|--------|------|-----|-----------|-----------|-----|---------|
 | Mac M4 | Apple M4 | 16 GB | 120 GB/s | 10 | macOS 15 | MPS |
 | Mac M2 | Apple M2 | 8 GB | 100 GB/s | 8 | macOS 14 | MPS |
 
-> M4 and M2 differ in more than memory bandwidth. GPU core count, cache hierarchy, RAM, and OS version are residual confounders.
-
 ---
 
-## Model
+## Key Findings (Paper Tables 4, 5 + Result Sections)
 
-**TinyLlama-1.1B-Chat-v1.0** — `TinyLlama/TinyLlama-1.1B-Chat-v1.0` on HuggingFace
-
-- 1.1B parameters · 22 layers · 32 attention heads · 4 KV heads (GQA) · float16
-- Fits within 8 GB RAM; preserves LLaMA-family KV-cache growth and bandwidth behavior
-- Absolute latency values are lower than 7B models; relative M4/M2 trends generalize directionally
-
----
-
-## Key Findings
-
-| Metric | Mac M4 16GB | Mac M2 8GB | Evidence |
-|--------|------------|------------|----------|
-| TTFT @ 128-token prompt | 26.9 ms | 45.0 ms | measured |
-| PTL @ 512-token context | 30.1 ms | 45.8 ms | measured |
-| Throughput @ 128 tokens | ~44 tok/s | ~29 tok/s | measured |
-| Cold start (model load) | ~3.6 s | ~4.3 s | measured |
-| p99 PTL above median (n=50) | +33% | +30% | measured |
-| Q4_K_M speedup vs F16 @ 512 ctx | ~2.2× | ~2.0× | **modeled** |
-
-- PTL grows **152%** from context 32→1024 tokens due to KV-cache traffic (measured)
-- Estimated effective bandwidth utilization: **~82%** of M4 ceiling at long contexts
+| Metric | M4 16GB | M2 8GB | Evidence |
+|--------|---------|--------|----------|
+| TTFT @ 128-tok prompt | 26.9 ms | 45.0 ms | measured |
+| PTL @ 512-tok context | 30.1 ms | 45.8 ms | measured |
+| Throughput @ 128-tok | ~44 tok/s | ~29 tok/s | measured |
+| Cold start (load) | ~3.6 s | ~4.3 s | measured |
+| p99 PTL vs median (n=50) | +33% | +30% | measured |
+| Q4_K_M speedup @ 512-tok | ~2.2× | ~2.0× | **modeled** |
 
 ---
 
 ## Quick Reproduction
 
+Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+Generate all paper figures from the submitted CSV files (no model download):
+```bash
+make graphs
+```
+
+Run the full benchmark suite on the current machine:
+```bash
+make bench PEAK_BW=120
+```
+
+Run a single sample benchmark:
+```bash
+python benchmarks/02_per_token_latency_vs_context.py --model TinyLlama/TinyLlama-1.1B-Chat-v1.0
+```
+
+Run tests:
+```bash
+pytest tests/
+```
+
+Full setup from scratch:
 ```bash
 git clone https://github.com/Vinayk393/CECS530-TokenGenerationLatency.git
 cd CECS530-TokenGenerationLatency
@@ -72,27 +90,38 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-make smoke
-make graphs
-python -m pytest tests/
+make smoke          # sample test case (~2.2 GB download first run)
+make graphs         # figures from submitted CSVs (no download needed)
+pytest tests/       # unit tests
+make bench PEAK_BW=120   # full suite on M4
 ```
 
-Run the full benchmark suite:
+Expected outputs:
+- `results/smoke_test.json` — smoke test result
+- `results/Mac_M4_16GB/*.csv` — benchmark CSVs
+- `graphs/*.png` — 9 publication-quality figures
 
-```bash
-make bench PEAK_BW=120
-```
+See `REPRODUCIBILITY.md` for complete step-by-step guide.
 
-For Mac M2:
+---
 
-```bash
-make bench PEAK_BW=100
-```
+## Methodology Alignment with Paper
 
-Run a single sample benchmark:
+### TTFT (Section 4.5)
+Timed as a **raw prefill forward pass** — `model(input_ids=..., use_cache=True)` — not `model.generate()`, to avoid HuggingFace generation overhead contaminating the prefill measurement.
 
-```bash
-python benchmarks/02_per_token_latency_vs_context.py --model TinyLlama/TinyLlama-1.1B-Chat-v1.0
+### PTL (Section 4.3, 4.5)
+Decode loop runs `N_TRANSIENT_SKIP + N_DECODE_TOKENS = 22` steps. Samples collected only from `i >= N_TRANSIENT_SKIP = 2` (paper: "First 2 tokens excluded to eliminate transients").
+
+```python
+for i in range(n_tokens + 2):    # +2 for excluded transients
+    torch.mps.synchronize()
+    t0 = time.perf_counter()
+    out = model(input_ids=next_tok, past_key_values=past_kv, use_cache=True)
+    torch.mps.synchronize()
+    ptl_ms = (time.perf_counter() - t0) * 1000
+    if i >= 2:                    # skip first two transient tokens
+        samples.append(ptl_ms)
 ```
 
 ---
@@ -102,29 +131,28 @@ python benchmarks/02_per_token_latency_vs_context.py --model TinyLlama/TinyLlama
 ```
 CECS530-TokenGenerationLatency/
 ├── benchmarks/
-│   ├── utils.py                           # Shared utilities
-│   ├── run_smoke_test.py                  # Quick grader verification
-│   ├── 01_ttft_vs_prompt_length.py        # [measured]
-│   ├── 02_per_token_latency_vs_context.py # [measured]
+│   ├── utils.py                           # Shared: device, sync, I/O, KV formula
+│   ├── run_smoke_test.py                  # Sample test case (rubric §3.1)
+│   ├── 01_ttft_vs_prompt_length.py        # [measured] raw prefill timing
+│   ├── 02_per_token_latency_vs_context.py # [measured] skips first 2 tokens
 │   ├── 03_e2e_latency_vs_output_length.py # [measured]
 │   ├── 04_throughput_vs_prompt_length.py  # [measured]
 │   ├── 05_inter_token_latency_timeline.py # [measured]
 │   ├── 06_cold_vs_warm_run.py             # [measured]
 │   ├── 07_quantization_speedup.py         # [F16 measured; Q4/Q8 modeled]
-│   ├── 08_kvcache_size_vs_context.py      # [analytical]
+│   ├── 08_kvcache_size_vs_context.py      # [analytical — no GPU needed]
 │   └── 09_latency_decomposition.py        # [estimated]
 ├── analysis/
-│   └── generate_research_graphs.py
+│   └── generate_research_graphs.py        # Repo-relative paths only
 ├── results/
-│   ├── README.md
-│   ├── Mac_M4_16GB/                       # M4 measured CSV outputs
-│   └── Mac_M2_8GB/                        # M2 measured CSV outputs
-├── graphs/
-│   └── README.md
+│   ├── README.md                          # Evidence label reference
+│   ├── Mac_M4_16GB/                       # M4 benchmark CSV outputs
+│   └── Mac_M2_8GB/                        # M2 benchmark CSV outputs
+├── graphs/                                # 9 publication-quality PNGs (180 DPI)
 ├── tests/
-│   ├── test_kvcache_formula.py            # Unit tests: KV-cache math
-│   ├── test_result_schema.py              # Unit tests: CSV schema + directories
-│   └── test_smoke.py                      # Unit tests: repo structure
+│   ├── test_kvcache_formula.py            # Paper Eq. 4+5, PTL methodology
+│   ├── test_result_schema.py              # CSV evidence labels
+│   └── test_smoke.py                      # Repo structure + path independence
 ├── docs/
 │   └── reproducibility.md
 ├── optimization/
@@ -132,6 +160,7 @@ CECS530-TokenGenerationLatency/
 ├── report/
 │   └── findings_report.md
 ├── README.md
+├── REPRODUCIBILITY.md
 ├── requirements.txt
 ├── Makefile
 ├── CITATION.cff
@@ -140,51 +169,21 @@ CECS530-TokenGenerationLatency/
 
 ---
 
-## Running Benchmarks
-
-```bash
-make bench PEAK_BW=120          # M4 — full suite
-make bench PEAK_BW=100          # M2 — full suite
-make smoke                      # Quick smoke test only
-make verify                     # Smoke test + pytest
-make graphs                     # Generate figures from existing CSVs
-make help                       # All targets and options
-```
-
----
-
-## Quantization Note
-
-Script 07 has two modes:
-
-```bash
-# Default: measure F16, project Q4/Q8 via bandwidth scaling (labeled: modeled)
-make bench-07-modeled
-
-# Measured: requires llama.cpp + GGUF model files (labeled: measured)
-make bench-07-llamacpp
-```
-
-Q8_0 and Q4_K_M speedup values are **modeled** projections from measured F16 PTL unless the llamacpp path is used with real GGUF files.
-
----
-
 ## Limitations
 
-- M4 and M2 differ in more than bandwidth; bandwidth is the **primary explanatory variable**, not the only causal factor
-- Q8_0 and Q4_K_M speedups are **modeled** unless GGUF models are benchmarked via `llama.cpp`
-- MPS does not expose hardware performance counters; latency decomposition is **estimated**
-- Absolute latencies vary with OS version, thermal state, and background processes
-- TinyLlama-1.1B absolute values do not generalize to 7B+ models; directional trends do
+- M4 and M2 differ beyond bandwidth; bandwidth is the **primary explanatory variable**
+- Q8_0 and Q4_K_M speedups are **modeled** unless benchmarked via llama.cpp + GGUF
+- MPS lacks hardware performance counters; decomposition is **estimated**
+- TinyLlama absolute values do not generalize to 7B+ models; trends do
 
 ---
 
 ## Third-Party Credits
 
-- **[PyTorch](https://pytorch.org/)** — tensor execution and MPS backend
-- **[HuggingFace Transformers](https://github.com/huggingface/transformers)** — model loading and generation
-- **[TinyLlama/TinyLlama-1.1B-Chat-v1.0](https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0)** — benchmark model
-- **[llama.cpp](https://github.com/ggerganov/llama.cpp)** — optional GGUF quantized benchmarking
+- **[PyTorch](https://pytorch.org/)** — tensor execution, MPS backend
+- **[HuggingFace Transformers](https://github.com/huggingface/transformers)** — model loading
+- **[TinyLlama/TinyLlama-1.1B-Chat-v1.0](https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0)** — model
+- **[llama.cpp](https://github.com/ggerganov/llama.cpp)** — optional GGUF benchmarking
 - **NumPy, pandas, matplotlib, seaborn** — analysis and visualization
 - **pytest** — unit testing
 
@@ -192,10 +191,4 @@ Q8_0 and Q4_K_M speedup values are **modeled** projections from measured F16 PTL
 
 ## References
 
-- Touvron et al., "LLaMA: Open and Efficient Foundation Language Models," arXiv 2023
-- Grattafiori et al., "The Llama 3 Herd of Models," arXiv 2024
-- Gerganov, "llama.cpp," GitHub, 2023
-- Williams et al., "Roofline: An Insightful Visual Performance Model," CACM 2009
-- Dettmers & Zettlemoyer, "The Case for 4-bit Precision," ICML 2023
-- Kwon et al., "Efficient Memory Management for LLM Serving with PagedAttention," SOSP 2023
-- Zhang et al., "TinyLlama: An Open-Source Small Language Model," arXiv 2024
+See paper `report/Adv_Arc_Final_Report.pdf` for full references [1]–[21].
