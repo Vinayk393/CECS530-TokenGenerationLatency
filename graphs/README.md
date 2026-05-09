@@ -1,45 +1,32 @@
 # Graphs
 
-Publication-quality figures generated from benchmark CSV outputs.
+Nine publication-quality PNGs (180 DPI) generated from CSV results in `results/`.
 
-## Generating Figures
-
+Run `make graphs` to regenerate all figures from submitted CSV data:
 ```bash
-# Generate all figures from existing CSVs:
-python analysis/generate_research_graphs.py
-
-# Verify required CSVs exist before generating:
-python analysis/generate_research_graphs.py --check_only
-
-# Via Makefile:
 make graphs
-make verify
+# or directly:
+python analysis/generate_research_graphs.py
 ```
 
-Figures are saved as 180 DPI PNGs suitable for inclusion in the report.
+## Figure Index
 
----
+| File | Paper Figure | Paper Section | Evidence type |
+|------|-------------|---------------|---------------|
+| `01_ttft_vs_prompt_length.png` | Figure 2 | Section 5.1 | measured |
+| `02_ptl_vs_context_length.png` | Figure 3 | Section 5.2 | measured |
+| `03_inter_token_timeline.png` | Figure 4 | Section 5.3 | measured |
+| `04_latency_decomposition.png` | Figure 6 | Section 5.5 | estimated |
+| `05_quantization_speedup.png` | Figure 8 | Section 5.7 | F16 measured; Q4/Q8 modeled |
+| `06_cold_vs_warm.png` | Figure 7 | Section 5.6 | measured |
+| `07_latency_variance_distribution.png` | Figure 9 | Section 5.8 | measured |
+| `08_model_scaling.png` | Figure 10 | Section 5.9 | TinyLlama measured; 1B/3B modeled |
+| `09_cross_platform_summary.png` | Figure 5 | Section 5.4 | measured |
 
-## Figure Reference
+## Evidence Labels
 
-| File | Report Figure | Script | Data Source |
-|------|--------------|--------|-------------|
-| `fig1_ttft_vs_prompt_length.png` | Figure 1 | `01_ttft_vs_prompt_length.py` | measured |
-| `fig2_ptl_vs_context.png` | Figure 2 | `02_per_token_latency_vs_context.py` | measured |
-| `fig3_inter_token_timeline.png` | Figure 3 | `05_inter_token_latency_timeline.py` | measured |
-| `fig4_throughput_vs_prompt.png` | Figure 4 | `04_throughput_vs_prompt_length.py` | measured |
-| `fig5_latency_decomposition.png` | Figure 5 | `09_latency_decomposition.py` | estimated |
-| `fig6_cold_warm_run.png` | Figure 6 | `06_cold_vs_warm_run.py` | measured |
-| `fig7_quantization_speedup.png` | Figure 7 | `07_quantization_speedup.py` | modeled (F16: measured) |
-| `fig8_tail_latency.png` | Figure 8 | `02_per_token_latency_vs_context.py` | measured (n=50) |
-| `fig9_model_scaling.png` | Figure 9 | `09_latency_decomposition.py` | TinyLlama measured; 1B/3B modeled |
-
----
-
-## Evidence Labels in Figures
-
-Figures that display modeled or estimated data include `[modeled]` or
-`[estimated]` in their title or caption. Figures from directly timed
-measurements include `[measured]`.
-
-See `results/README.md` for the full evidence label reference.
+| Label | Meaning |
+|-------|---------|
+| `measured` | Directly timed with `perf_counter` + `mps.synchronize()` |
+| `estimated` | Architecture proportions calibrated to measured PTL |
+| `modeled` | Projected from measured F16 baseline via bandwidth scaling |
