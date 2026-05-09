@@ -2,6 +2,8 @@
 ## CECS530-TokenGenerationLatency
 ### Mac M4 16GB vs Mac M2 8GB — Apple Silicon Unified Memory Study
 
+![CI](https://github.com/Vinayk393/CECS530-TokenGenerationLatency/actions/workflows/ci.yml/badge.svg)
+
 ---
 
 ## Overview
@@ -11,6 +13,7 @@ two Apple Silicon devices: Mac M4 16GB and Mac M2 8GB. Model, backend, batch
 size, benchmark scripts, and software configuration are held constant. Memory
 bandwidth is the primary explanatory variable; GPU core count, cache hierarchy,
 RAM capacity, OS version, and thermal state are acknowledged as residual confounders.
+Project metadata (model, hardware, software versions) is recorded in `metadata.json`.
 
 The main result is that M4 shows an observed **~1.5× per-token latency advantage**
 over M2 under this benchmark setup (paper Section 5.2, Table 5).
@@ -29,6 +32,9 @@ over M2 under this benchmark setup (paper Section 5.2, Table 5).
 | `analytical` | Computed from architecture formula (paper Eq. 4) |
 | `estimated` | Architecture proportions calibrated to measured PTL; not kernel-profiled |
 | `modeled` | Projected from measured F16 baseline via bandwidth-scaling assumptions |
+
+> Evidence labels are schema-validated by `pytest tests/test_result_schema.py` —
+> run `pytest tests/` to verify all CSVs carry correct `measurement_type` values.
 
 ---
 
@@ -68,13 +74,23 @@ make graphs
 
 Run the full benchmark suite on the current machine:
 ```bash
-make bench PEAK_BW=120
+make bench PEAK_BW=120 DEVICE=Mac_M4_16GB   # on M4
+make bench PEAK_BW=100 DEVICE=Mac_M2_8GB    # on M2
 ```
 
 Run a single sample benchmark:
 ```bash
 python benchmarks/02_per_token_latency_vs_context.py --model TinyLlama/TinyLlama-1.1B-Chat-v1.0
 ```
+
+Reproduce quantization results with physical measurement (replaces modeled projection):
+```bash
+bash download_gguf_models.sh                               # ~4 GB: F16 + Q8_0 + Q4_K_M
+make bench-07-llamacpp GGUF_DIR=models/ DEVICE=Mac_M4_16GB
+```
+Output: `results/Mac_M4_16GB/07_quantization_llamacpp.csv` with `measurement_type=measured`.
+Requires `llama-bench` on PATH or at `models/llama-bench`
+(build from https://github.com/ggerganov/llama.cpp).
 
 Run tests:
 ```bash
@@ -90,10 +106,11 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-make smoke          # sample test case (~2.2 GB download first run)
-make graphs         # figures from submitted CSVs (no download needed)
-pytest tests/       # unit tests
-make bench PEAK_BW=120   # full suite on M4
+make smoke                                   # sample test case (~2.2 GB download first run)
+make graphs                                  # figures from submitted CSVs (no download needed)
+pytest tests/                                # unit tests
+make bench PEAK_BW=120 DEVICE=Mac_M4_16GB   # full suite on M4
+make bench PEAK_BW=100 DEVICE=Mac_M2_8GB    # full suite on M2
 ```
 
 Expected outputs:
@@ -159,10 +176,16 @@ CECS530-TokenGenerationLatency/
 │   └── kv_cache_proposal.md
 ├── report/
 │   └── findings_report.md
+├── workflows/
+│   ├── ci.yml                             # CI: runs pytest on push
+│   └── verify.yml                         # Verifies CSVs + graph generation
 ├── README.md
 ├── REPRODUCIBILITY.md
 ├── requirements.txt
 ├── Makefile
+├── metadata.json                          # Project metadata (model, hw, sw versions)
+├── download_gguf_models.sh                # Downloads GGUF files for bench-07-llamacpp
+├── models/                                # GGUF files land here (git-ignored, ~4 GB)
 ├── CITATION.cff
 └── LICENSE
 ```

@@ -36,7 +36,7 @@ build/
 models/
 
 # HuggingFace cache
-~/.cache/huggingface/
+.cache/
 
 # IDE
 .vscode/
@@ -48,3 +48,4 @@ models/
 *.log
 *.tmp
 *.bak
+results/tmp/
