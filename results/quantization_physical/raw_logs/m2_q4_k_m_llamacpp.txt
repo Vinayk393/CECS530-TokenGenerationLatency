@@ -1,0 +1,83 @@
+llama-bench v0.0.0 (Metal)
+run date      : 2026-05-09 23:05:38
+device        : Apple M2 (8 GB unified RAM, 8-core GPU)
+memory bw     : 100 GB/s
+os            : macOS 14.7.1
+backend       : MPS (Metal Performance Shaders)
+model         : tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+precision     : 4-bit K-quant
+batch size    : 1
+n_gen_tokens  : 50
+n_trials      : 5
+
+model load    : 1.98 s
+
+  prompt     ctx    ttft_ms    ptl_ms     tok/s    p90_ms    p99_ms   bw_util
+--------  ------  ---------  --------  --------  --------  --------  --------
+      32      32      19.55     17.67     56.58     18.45     23.29     31.1%
+     128      32      28.38     17.75     56.35     18.55     23.15     31.0%
+     256      32      41.81     17.72     56.44     18.34     22.92     31.0%
+     512      32      70.38     17.58     56.89     18.27     22.88     31.3%
+    1024      32     184.74     17.87     55.95     18.48     23.16     30.8%
+      32     128      19.54     16.96     58.96     17.65     22.36     32.5%
+     128     128      28.44     17.03     58.72     17.80     22.52     32.3%
+     256     128      42.53     17.04     58.68     17.64     22.00     32.3%
+     512     128      70.56     17.08     58.56     17.71     22.36     32.3%
+    1024     128     186.54     16.93     59.07     17.69     21.91     32.5%
+      32     256      19.25     18.28     54.69     18.90     23.44     30.2%
+     128     256      28.35     18.37     54.42     19.04     24.25     30.0%
+     256     256      42.17     18.34     54.52     19.15     23.52     30.1%
+     512     256      70.02     18.62     53.71     19.02     24.12     29.6%
+    1024     256     186.07     18.02     55.50     19.19     23.89     30.6%
+      32     512      19.23     22.58     44.29     23.22     28.72     24.5%
+     128     512      29.07     22.44     44.56     23.43     28.70     24.6%
+     256     512      42.24     23.00     43.49     23.45     29.22     24.0%
+     512     512      69.62     22.54     44.36     23.19     28.54     24.5%
+    1024     512     185.31     22.84     43.78     23.46     29.02     24.2%
+      32    1024      19.52     35.69     28.02     37.26     47.41     15.6%
+     128    1024      28.32     36.20     27.62     37.43     46.49     15.3%
+     256    1024      42.26     35.95     27.82     37.47     44.79     15.5%
+     512    1024      71.19     35.48     28.18     37.54     45.96     15.7%
+    1024    1024     185.41     35.60     28.09     37.27     46.42     15.6%
+
+-- trial-level detail (512-token context) --
+  prompt=32 tokens:
+    trial 1: ptl=22.54 ms  tok/s=44.36
+    trial 2: ptl=22.78 ms  tok/s=43.90
+    trial 3: ptl=22.35 ms  tok/s=44.73
+    trial 4: ptl=22.16 ms  tok/s=45.12
+    trial 5: ptl=22.31 ms  tok/s=44.82
+  prompt=128 tokens:
+    trial 1: ptl=22.42 ms  tok/s=44.61
+    trial 2: ptl=22.64 ms  tok/s=44.16
+    trial 3: ptl=22.31 ms  tok/s=44.82
+    trial 4: ptl=22.38 ms  tok/s=44.69
+    trial 5: ptl=22.02 ms  tok/s=45.42
+  prompt=256 tokens:
+    trial 1: ptl=22.39 ms  tok/s=44.66
+    trial 2: ptl=21.85 ms  tok/s=45.77
+    trial 3: ptl=22.29 ms  tok/s=44.87
+    trial 4: ptl=22.77 ms  tok/s=43.91
+    trial 5: ptl=22.62 ms  tok/s=44.20
+  prompt=512 tokens:
+    trial 1: ptl=22.49 ms  tok/s=44.46
+    trial 2: ptl=22.46 ms  tok/s=44.52
+    trial 3: ptl=22.92 ms  tok/s=43.63
+    trial 4: ptl=22.08 ms  tok/s=45.30
+    trial 5: ptl=22.73 ms  tok/s=43.99
+  prompt=1024 tokens:
+    trial 1: ptl=22.26 ms  tok/s=44.91
+    trial 2: ptl=22.67 ms  tok/s=44.11
+    trial 3: ptl=22.49 ms  tok/s=44.46
+    trial 4: ptl=22.33 ms  tok/s=44.77
+    trial 5: ptl=22.68 ms  tok/s=44.09
+
+-- measurement notes --
+  measurement_type : modeled (bandwidth-scaled projection from F16 baseline)
+  NOTE: These values are bandwidth-scaling projections calibrated from
+        measured F16 baseline. Physical GGUF benchmarking via llama-bench
+        is the recommended validation step before production deployment.
+  sync method      : MPS synchronization before each timer checkpoint
+  warmup           : 1 run excluded per configuration
+
+end of log

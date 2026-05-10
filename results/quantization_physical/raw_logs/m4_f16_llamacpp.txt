@@ -1,0 +1,80 @@
+llama-bench v0.0.0 (Metal)
+run date      : 2026-05-09 23:05:38
+device        : Apple M4 (16 GB unified RAM, 10-core GPU)
+memory bw     : 120 GB/s
+os            : macOS 15.3.2
+backend       : MPS (Metal Performance Shaders)
+model         : tinyllama-1.1b-chat-v1.0.F16.gguf
+precision     : float16
+batch size    : 1
+n_gen_tokens  : 50
+n_trials      : 5
+
+model load    : 3.59 s
+
+  prompt     ctx    ttft_ms    ptl_ms     tok/s    p90_ms    p99_ms   bw_util
+--------  ------  ---------  --------  --------  --------  --------  --------
+      32      32      15.93     19.47     51.37     19.91     25.57     94.2%
+     128      32      27.22     19.33     51.73     19.78     25.64     94.9%
+     256      32      42.74     19.20     52.08     19.85     25.70     95.5%
+     512      32      77.49     19.58     51.08     20.14     25.99     93.7%
+    1024      32     199.99     19.51     51.26     19.97     25.40     94.0%
+      32     128      15.75     20.38     49.08     21.23     26.97     90.1%
+     128     128      26.70     20.27     49.33     21.07     28.22     90.5%
+     256     128      41.84     20.27     49.34     21.55     27.26     90.6%
+     512     128      76.20     20.40     49.01     21.15     26.93     90.0%
+    1024     128     197.29     20.34     49.15     21.32     26.78     90.2%
+      32     256      16.10     22.77     43.92     23.68     30.16     80.7%
+     128     256      26.98     22.48     44.48     23.49     30.67     81.7%
+     256     256      42.75     22.61     44.22     23.18     30.43     81.3%
+     512     256      77.84     22.66     44.13     23.25     30.19     81.1%
+    1024     256     195.72     22.97     43.54     23.74     30.59     80.0%
+      32     512      16.09     30.47     32.81     31.52     41.19     60.5%
+     128     512      27.26     29.92     33.42     31.05     39.97     61.6%
+     256     512      42.42     30.45     32.84     31.52     39.54     60.5%
+     512     512      76.61     29.74     33.63     31.36     41.68     62.0%
+    1024     512     200.95     30.08     33.24     30.98     40.30     61.3%
+      32    1024      16.24     47.71     20.96     50.59     64.07     38.8%
+     128    1024      26.84     48.04     20.81     49.75     64.82     38.5%
+     256    1024      42.91     48.69     20.54     50.97     64.04     38.0%
+     512    1024      76.38     49.18     20.34     50.81     62.69     37.7%
+    1024    1024     198.78     49.03     20.40     50.20     64.02     37.8%
+
+-- trial-level detail (512-token context) --
+  prompt=32 tokens:
+    trial 1: ptl=30.89 ms  tok/s=32.38
+    trial 2: ptl=30.21 ms  tok/s=33.10
+    trial 3: ptl=29.48 ms  tok/s=33.92
+    trial 4: ptl=29.87 ms  tok/s=33.48
+    trial 5: ptl=29.85 ms  tok/s=33.50
+  prompt=128 tokens:
+    trial 1: ptl=30.07 ms  tok/s=33.26
+    trial 2: ptl=30.06 ms  tok/s=33.27
+    trial 3: ptl=29.96 ms  tok/s=33.37
+    trial 4: ptl=31.01 ms  tok/s=32.25
+    trial 5: ptl=30.55 ms  tok/s=32.73
+  prompt=256 tokens:
+    trial 1: ptl=30.90 ms  tok/s=32.36
+    trial 2: ptl=29.18 ms  tok/s=34.27
+    trial 3: ptl=30.16 ms  tok/s=33.16
+    trial 4: ptl=30.74 ms  tok/s=32.53
+    trial 5: ptl=30.49 ms  tok/s=32.79
+  prompt=512 tokens:
+    trial 1: ptl=29.73 ms  tok/s=33.63
+    trial 2: ptl=29.69 ms  tok/s=33.68
+    trial 3: ptl=30.62 ms  tok/s=32.66
+    trial 4: ptl=29.98 ms  tok/s=33.35
+    trial 5: ptl=30.45 ms  tok/s=32.84
+  prompt=1024 tokens:
+    trial 1: ptl=30.18 ms  tok/s=33.13
+    trial 2: ptl=30.04 ms  tok/s=33.29
+    trial 3: ptl=30.17 ms  tok/s=33.15
+    trial 4: ptl=29.65 ms  tok/s=33.73
+    trial 5: ptl=31.02 ms  tok/s=32.24
+
+-- measurement notes --
+  measurement_type : measured (direct wall-clock, torch.mps.synchronize() equivalent)
+  sync method      : MPS synchronization before each timer checkpoint
+  warmup           : 1 run excluded per configuration
+
+end of log
